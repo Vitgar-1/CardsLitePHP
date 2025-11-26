@@ -1,0 +1,39 @@
+# Git files
+.git
+.gitignore
+
+# Environment files (will be set via Render)
+.env
+.env.example
+
+# Documentation
+*.md
+!README.md
+
+# Database (will be created at runtime)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+nohup.out
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Dependencies (installed during build)
+/vendor/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+/tmp/
+/temp/
