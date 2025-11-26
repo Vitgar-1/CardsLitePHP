@@ -1,5 +1,5 @@
-# Use official PHP 8.1 with CLI
-FROM php:8.1-cli
+# Use official PHP 8.2 with CLI
+FROM php:8.2-cli
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -29,9 +29,6 @@ COPY . .
 
 # Create data directory for SQLite database
 RUN mkdir -p /app/data && chmod 777 /app/data
-
-# Create .env file from example if it doesn't exist
-RUN if [ ! -f .env ]; then cp .env.example .env; fi
 
 # Run the bot
 CMD ["php", "bot.php"]
