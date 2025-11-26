@@ -1,0 +1,6 @@
+/vendor/
+.env
+cardslite.db
+composer.lock
+*.log
+/.idea
