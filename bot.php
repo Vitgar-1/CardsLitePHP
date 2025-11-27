@@ -3,7 +3,6 @@
 require_once __DIR__ . '/vendor/autoload.php';
 
 use Telegram\Bot\Api;
-use Telegram\Bot\Objects\Update;
 use CardsLite\Database;
 use CardsLite\Utils;
 use CardsLite\UI;
@@ -531,6 +530,202 @@ function handleChatMessage($telegram, $chatId, $userId, $messageText): void
     }
 }
 
+// Обработка голосовых сообщений
+function handleVoiceMessage($telegram, $update): void
+{
+    $message = $update->message;
+    $chatId = $message->chat->id;
+    $userId = $message->from->id;
+    $voice = $message->voice;
+
+    $room = Database::getUserAnyRoom($userId);
+    if (!$room) {
+        return;
+    }
+
+    $roomId = $room['id'];
+    $currentQuestionIndex = $room['current_question_index'];
+    $voiceFileId = $voice->fileId;
+
+    Database::saveChatMessage($roomId, $userId, $currentQuestionIndex, null, $voiceFileId, null, 'voice');
+    Database::setPlayerAnswered($roomId, $userId, true);
+
+    $otherPlayerId = Database::getOtherPlayerId($roomId, $userId);
+    if (!$otherPlayerId) {
+        return;
+    }
+
+    if (Database::isChatRevealed($roomId)) {
+        // Чат раскрыт - пересылаем голосовое сообщение
+        $telegram->sendVoice([
+            'chat_id' => $otherPlayerId,
+            'voice' => $voiceFileId
+        ]);
+        return;
+    }
+
+    // Чат еще не раскрыт
+    [$player1First, $player2First] = Database::checkFirstAnsweredStatus($roomId);
+
+    if ($userId == $room['player1_id'] && !$player1First) {
+        Database::setPlayerFirstAnswered($roomId, $userId, true);
+        $player1First = true;
+    } elseif ($userId == $room['player2_id'] && !$player2First) {
+        Database::setPlayerFirstAnswered($roomId, $userId, true);
+        $player2First = true;
+    }
+
+    sendMessage($telegram, $chatId, "✅ Голосовое сообщение отправлено!", UI::getRemoveKeyboard());
+
+    if ($player1First && $player2First) {
+        // Оба ответили - раскрываем чат
+        $chatMessages = Database::getChatMessages($roomId, $currentQuestionIndex);
+
+        // Отправляем историю и медиафайлы обоим игрокам
+        foreach ($chatMessages as $msg) {
+            $msgType = $msg['message_type'] ?? 'text';
+
+            if ($msgType === 'voice' && $msg['voice_file_id']) {
+                $telegram->sendVoice([
+                    'chat_id' => $chatId,
+                    'voice' => $msg['voice_file_id']
+                ]);
+                $telegram->sendVoice([
+                    'chat_id' => $otherPlayerId,
+                    'voice' => $msg['voice_file_id']
+                ]);
+            } elseif ($msgType === 'video_note' && $msg['video_note_file_id']) {
+                $telegram->sendVideoNote([
+                    'chat_id' => $chatId,
+                    'video_note' => $msg['video_note_file_id']
+                ]);
+                $telegram->sendVideoNote([
+                    'chat_id' => $otherPlayerId,
+                    'video_note' => $msg['video_note_file_id']
+                ]);
+            }
+        }
+
+        $chatHistory = UI::formatChatHistory($chatMessages, $room['player1_id']);
+        sendMessage($telegram, $chatId, $chatHistory);
+        sendMessage($telegram, $otherPlayerId, $chatHistory);
+
+        Database::setChatRevealed($roomId);
+
+        sendMessage($telegram, $chatId,
+            "💬 Теперь вы можете свободно переписываться. Нажмите [▶️ Далее] когда будете готовы к следующему вопросу:",
+            UI::getGameNextKeyboard()
+        );
+        sendMessage($telegram, $otherPlayerId,
+            "💬 Теперь вы можете свободно переписываться. Нажмите [▶️ Далее] когда будете готовы к следующему вопросу:",
+            UI::getGameNextKeyboard()
+        );
+    } else {
+        sendMessage($telegram, $otherPlayerId,
+            "⏳ Собеседник уже ответил на вопрос!\n"
+            . "Его ответ откроется после вашего ответа."
+        );
+    }
+}
+
+// Обработка видеосообщений
+function handleVideoMessage($telegram, $update): void
+{
+    $message = $update->message;
+    $chatId = $message->chat->id;
+    $userId = $message->from->id;
+    $videoNote = $message->videoNote;
+
+    $room = Database::getUserAnyRoom($userId);
+    if (!$room) {
+        return;
+    }
+
+    $roomId = $room['id'];
+    $currentQuestionIndex = $room['current_question_index'];
+    $videoNoteFileId = $videoNote->fileId;
+
+    Database::saveChatMessage($roomId, $userId, $currentQuestionIndex, null, null, $videoNoteFileId, 'video_note');
+    Database::setPlayerAnswered($roomId, $userId, true);
+
+    $otherPlayerId = Database::getOtherPlayerId($roomId, $userId);
+    if (!$otherPlayerId) {
+        return;
+    }
+
+    if (Database::isChatRevealed($roomId)) {
+        // Чат раскрыт - пересылаем видеосообщение
+        $telegram->sendVideoNote([
+            'chat_id' => $otherPlayerId,
+            'video_note' => $videoNoteFileId
+        ]);
+        return;
+    }
+
+    // Чат еще не раскрыт
+    [$player1First, $player2First] = Database::checkFirstAnsweredStatus($roomId);
+
+    if ($userId == $room['player1_id'] && !$player1First) {
+        Database::setPlayerFirstAnswered($roomId, $userId, true);
+        $player1First = true;
+    } elseif ($userId == $room['player2_id'] && !$player2First) {
+        Database::setPlayerFirstAnswered($roomId, $userId, true);
+        $player2First = true;
+    }
+
+    sendMessage($telegram, $chatId, "✅ Видеосообщение отправлено!", UI::getRemoveKeyboard());
+
+    if ($player1First && $player2First) {
+        // Оба ответили - раскрываем чат
+        $chatMessages = Database::getChatMessages($roomId, $currentQuestionIndex);
+
+        // Отправляем историю и медиафайлы обоим игрокам
+        foreach ($chatMessages as $msg) {
+            $msgType = $msg['message_type'] ?? 'text';
+
+            if ($msgType === 'voice' && $msg['voice_file_id']) {
+                $telegram->sendVoice([
+                    'chat_id' => $chatId,
+                    'voice' => $msg['voice_file_id']
+                ]);
+                $telegram->sendVoice([
+                    'chat_id' => $otherPlayerId,
+                    'voice' => $msg['voice_file_id']
+                ]);
+            } elseif ($msgType === 'video_note' && $msg['video_note_file_id']) {
+                $telegram->sendVideoNote([
+                    'chat_id' => $chatId,
+                    'video_note' => $msg['video_note_file_id']
+                ]);
+                $telegram->sendVideoNote([
+                    'chat_id' => $otherPlayerId,
+                    'video_note' => $msg['video_note_file_id']
+                ]);
+            }
+        }
+
+        $chatHistory = UI::formatChatHistory($chatMessages, $room['player1_id']);
+        sendMessage($telegram, $chatId, $chatHistory);
+        sendMessage($telegram, $otherPlayerId, $chatHistory);
+
+        Database::setChatRevealed($roomId);
+
+        sendMessage($telegram, $chatId,
+            "💬 Теперь вы можете свободно переписываться. Нажмите [▶️ Далее] когда будете готовы к следующему вопросу:",
+            UI::getGameNextKeyboard()
+        );
+        sendMessage($telegram, $otherPlayerId,
+            "💬 Теперь вы можете свободно переписываться. Нажмите [▶️ Далее] когда будете готовы к следующему вопросу:",
+            UI::getGameNextKeyboard()
+        );
+    } else {
+        sendMessage($telegram, $otherPlayerId,
+            "⏳ Собеседник уже ответил на вопрос!\n"
+            . "Его ответ откроется после вашего ответа."
+        );
+    }
+}
+
 // Обработчик callback queries
 function handleCallbackQuery($telegram, $update): void
 {
@@ -590,6 +785,19 @@ while (true) {
 
             if ($update->message) {
                 $message = $update->message;
+
+                // Проверка на голосовое сообщение
+                if ($message->voice) {
+                    handleVoiceMessage($telegram, $update);
+                    continue;
+                }
+
+                // Проверка на видеосообщение
+                if ($message->videoNote) {
+                    handleVideoMessage($telegram, $update);
+                    continue;
+                }
+
                 $text = $message->text;
 
                 if (str_starts_with($text, '/start')) {

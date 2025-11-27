@@ -117,6 +117,7 @@ class Database
                 message_type TEXT NOT NULL DEFAULT 'text',
                 message_text TEXT,
                 voice_file_id TEXT,
+                video_note_file_id TEXT,
                 sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
             )
@@ -633,14 +634,15 @@ class Database
         int $questionIndex,
         ?string $messageText = null,
         ?string $voiceFileId = null,
+        ?string $videoNoteFileId = null,
         string $messageType = 'text'
     ): void {
         $conn = self::getConnection();
         $stmt = $conn->prepare("
-            INSERT INTO chat_messages (room_id, user_id, question_index, message_type, message_text, voice_file_id)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO chat_messages (room_id, user_id, question_index, message_type, message_text, voice_file_id, video_note_file_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$roomId, $userId, $questionIndex, $messageType, $messageText, $voiceFileId]);
+        $stmt->execute([$roomId, $userId, $questionIndex, $messageType, $messageText, $voiceFileId, $videoNoteFileId]);
     }
 
     /**
@@ -650,7 +652,7 @@ class Database
     {
         $conn = self::getConnection();
         $stmt = $conn->prepare("
-            SELECT user_id, message_type, message_text, voice_file_id, sent_at FROM chat_messages
+            SELECT user_id, message_type, message_text, voice_file_id, video_note_file_id, sent_at FROM chat_messages
             WHERE room_id = ? AND question_index = ?
             ORDER BY sent_at ASC
         ");

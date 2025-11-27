@@ -92,7 +92,9 @@ class UI
                 $text = $msg['message_text'];
                 $message .= "👤 $senderName:\n$text\n\n";
             } elseif ($msgType === 'voice') {
-                $message .= "👤 $senderName:\n🎙️ [Голосовое сообщение]";
+                $message .= "👤 $senderName:\n🎙️ [Голосовое сообщение]\n\n";
+            } elseif ($msgType === 'video_note') {
+                $message .= "👤 $senderName:\n🎥 [Видеосообщение]\n\n";
             }
         }
 
