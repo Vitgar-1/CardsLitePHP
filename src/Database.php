@@ -52,9 +52,111 @@ class Database
     public static function initDb(): void
     {
         $conn = self::getConnection();
+        $dbType = getenv('DB_TYPE') ?: ($_ENV['DB_TYPE'] ?? 'sqlite');
 
-        // Таблица тем
-        $conn->exec("
+        if ($dbType === 'mysql') {
+            // ---------- MySQL схема ----------
+
+            // Темы
+            $conn->exec("
+            CREATE TABLE IF NOT EXISTS topics (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+            // Вопросы
+            $conn->exec("
+            CREATE TABLE IF NOT EXISTS questions (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                topic_id INT UNSIGNED NOT NULL,
+                question_text TEXT NOT NULL,
+                order_num INT NOT NULL,
+                CONSTRAINT fk_questions_topic
+                    FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE CASCADE,
+                UNIQUE KEY uq_topic_order (topic_id, order_num)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+            // Комнаты
+            $conn->exec("
+            CREATE TABLE IF NOT EXISTS rooms (
+                id VARCHAR(32) PRIMARY KEY,
+                topic_id INT UNSIGNED NOT NULL,
+                status VARCHAR(32) NOT NULL DEFAULT 'waiting',
+                current_question_index INT NOT NULL DEFAULT 0,
+                player1_id BIGINT,
+                player2_id BIGINT,
+                player1_ready TINYINT(1) DEFAULT 0,
+                player2_ready TINYINT(1) DEFAULT 0,
+                player1_message_id BIGINT,
+                player2_message_id BIGINT,
+                player1_answered TINYINT(1) DEFAULT 0,
+                player2_answered TINYINT(1) DEFAULT 0,
+                player1_first_answered TINYINT(1) DEFAULT 0,
+                player2_first_answered TINYINT(1) DEFAULT 0,
+                chat_revealed TINYINT(1) DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_rooms_topic
+                    FOREIGN KEY (topic_id) REFERENCES topics(id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+            $conn->exec("
+            CREATE INDEX IF NOT EXISTS idx_rooms_player1 ON rooms(player1_id, status)
+        ");
+
+            $conn->exec("
+            CREATE INDEX IF NOT EXISTS idx_rooms_player2 ON rooms(player2_id, status)
+        ");
+
+            // Ответы
+            $conn->exec("
+            CREATE TABLE IF NOT EXISTS answers (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                room_id VARCHAR(32) NOT NULL,
+                user_id BIGINT NOT NULL,
+                question_index INT NOT NULL,
+                answer_text TEXT NOT NULL,
+                answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_answers_room
+                    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+                UNIQUE KEY uq_answer (room_id, user_id, question_index)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+            $conn->exec("
+            CREATE INDEX IF NOT EXISTS idx_answers_room
+            ON answers(room_id, question_index)
+        ");
+
+            // Сообщения чата
+            $conn->exec("
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                room_id VARCHAR(32) NOT NULL,
+                user_id BIGINT NOT NULL,
+                question_index INT NOT NULL,
+                message_type VARCHAR(16) NOT NULL DEFAULT 'text',
+                message_text TEXT,
+                voice_file_id VARCHAR(255),
+                video_note_file_id VARCHAR(255),
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_chat_room
+                    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+            $conn->exec("
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_room
+            ON chat_messages(room_id, question_index)
+        ");
+        } else {
+            // ---------- SQLite схема (как у тебя и была) ----------
+
+            // Таблица тем
+            $conn->exec("
             CREATE TABLE IF NOT EXISTS topics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
@@ -62,8 +164,8 @@ class Database
             )
         ");
 
-        // Таблица вопросов
-        $conn->exec("
+            // Таблица вопросов
+            $conn->exec("
             CREATE TABLE IF NOT EXISTS questions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 topic_id INTEGER NOT NULL,
@@ -74,8 +176,8 @@ class Database
             )
         ");
 
-        // Таблица комнат
-        $conn->exec("
+            // Таблица комнат
+            $conn->exec("
             CREATE TABLE IF NOT EXISTS rooms (
                 id TEXT PRIMARY KEY,
                 topic_id INTEGER NOT NULL,
@@ -97,16 +199,16 @@ class Database
             )
         ");
 
-        $conn->exec("
+            $conn->exec("
             CREATE INDEX IF NOT EXISTS idx_rooms_player1 ON rooms(player1_id, status)
         ");
 
-        $conn->exec("
+            $conn->exec("
             CREATE INDEX IF NOT EXISTS idx_rooms_player2 ON rooms(player2_id, status)
         ");
 
-        // Таблица ответов
-        $conn->exec("
+            // Таблица ответов
+            $conn->exec("
             CREATE TABLE IF NOT EXISTS answers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 room_id TEXT NOT NULL,
@@ -119,12 +221,12 @@ class Database
             )
         ");
 
-        $conn->exec("
+            $conn->exec("
             CREATE INDEX IF NOT EXISTS idx_answers_room ON answers(room_id, question_index)
         ");
 
-        // Таблица сообщений чата
-        $conn->exec("
+            // Таблица сообщений чата
+            $conn->exec("
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 room_id TEXT NOT NULL,
@@ -139,12 +241,14 @@ class Database
             )
         ");
 
-        $conn->exec("
+            $conn->exec("
             CREATE INDEX IF NOT EXISTS idx_chat_messages_room ON chat_messages(room_id, question_index)
         ");
+        }
 
         echo "✓ База данных инициализирована\n";
     }
+
 
     /**
      * Получить список всех тем
