@@ -6,14 +6,14 @@ use PDO;
 use PDOException;
 
 /**
- * Модуль для работы с SQLite базой данных
+ * Модуль для работы с БД (MySQL 8 / SQLite)
  */
 class Database
 {
     private static ?PDO $connection = null;
 
     /**
-     * Получить соединение с БД
+     * Получить соединение с БД (Singleton)
      */
     public static function getConnection(): PDO
     {
@@ -23,11 +23,11 @@ class Database
 
                 if ($dbType === 'mysql') {
                     // Подключение к MySQL
-                    $host = getenv('DB_HOST') ?: ($_ENV['DB_HOST'] ?? 'localhost');
-                    $port = getenv('DB_PORT') ?: ($_ENV['DB_PORT'] ?? '3306');
+                    $host   = getenv('DB_HOST') ?: ($_ENV['DB_HOST'] ?? 'localhost');
+                    $port   = getenv('DB_PORT') ?: ($_ENV['DB_PORT'] ?? '3306');
                     $dbName = getenv('DB_NAME') ?: ($_ENV['DB_NAME'] ?? 'cardslite');
-                    $user = getenv('DB_USER') ?: ($_ENV['DB_USER'] ?? 'root');
-                    $pass = getenv('DB_PASS') ?: ($_ENV['DB_PASS'] ?? '');
+                    $user   = getenv('DB_USER') ?: ($_ENV['DB_USER'] ?? 'root');
+                    $pass   = getenv('DB_PASS') ?: ($_ENV['DB_PASS'] ?? '');
 
                     $dsn = "mysql:host={$host};port={$port};dbname={$dbName};charset=utf8mb4";
                     self::$connection = new PDO($dsn, $user, $pass);
@@ -40,9 +40,11 @@ class Database
                 self::$connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
                 self::$connection->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
             } catch (PDOException $e) {
-                die("Database connection failed: " . $e->getMessage());
+                // Здесь лучше логировать, но для простоты — die
+                die('Database connection failed: ' . $e->getMessage());
             }
         }
+
         return self::$connection;
     }
 
@@ -51,204 +53,200 @@ class Database
      */
     public static function initDb(): void
     {
-        $conn = self::getConnection();
+        $conn   = self::getConnection();
         $dbType = getenv('DB_TYPE') ?: ($_ENV['DB_TYPE'] ?? 'sqlite');
 
         if ($dbType === 'mysql') {
-            // ---------- MySQL схема ----------
+            // ---------- MySQL 8 схема ----------
 
             // Темы
             $conn->exec("
-            CREATE TABLE IF NOT EXISTS topics (
-                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                name VARCHAR(255) NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
+                CREATE TABLE IF NOT EXISTS topics (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL UNIQUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB
+                  DEFAULT CHARSET=utf8mb4
+                  COLLATE=utf8mb4_unicode_ci
+            ");
 
             // Вопросы
             $conn->exec("
-            CREATE TABLE IF NOT EXISTS questions (
-                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                topic_id INT UNSIGNED NOT NULL,
-                question_text TEXT NOT NULL,
-                order_num INT NOT NULL,
-                CONSTRAINT fk_questions_topic
-                    FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE CASCADE,
-                UNIQUE KEY uq_topic_order (topic_id, order_num)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
+                CREATE TABLE IF NOT EXISTS questions (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    topic_id INT UNSIGNED NOT NULL,
+                    question_text TEXT NOT NULL,
+                    order_num INT NOT NULL,
+                    CONSTRAINT fk_questions_topic
+                        FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE CASCADE,
+                    UNIQUE KEY uq_topic_order (topic_id, order_num)
+                ) ENGINE=InnoDB
+                  DEFAULT CHARSET=utf8mb4
+                  COLLATE=utf8mb4_unicode_ci
+            ");
 
             // Комнаты
             $conn->exec("
-            CREATE TABLE IF NOT EXISTS rooms (
-                id VARCHAR(32) PRIMARY KEY,
-                topic_id INT UNSIGNED NOT NULL,
-                status VARCHAR(32) NOT NULL DEFAULT 'waiting',
-                current_question_index INT NOT NULL DEFAULT 0,
-                player1_id BIGINT,
-                player2_id BIGINT,
-                player1_ready TINYINT(1) DEFAULT 0,
-                player2_ready TINYINT(1) DEFAULT 0,
-                player1_message_id BIGINT,
-                player2_message_id BIGINT,
-                player1_answered TINYINT(1) DEFAULT 0,
-                player2_answered TINYINT(1) DEFAULT 0,
-                player1_first_answered TINYINT(1) DEFAULT 0,
-                player2_first_answered TINYINT(1) DEFAULT 0,
-                chat_revealed TINYINT(1) DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT fk_rooms_topic
-                    FOREIGN KEY (topic_id) REFERENCES topics(id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
-
-            $conn->exec("
-            CREATE INDEX IF NOT EXISTS idx_rooms_player1 ON rooms(player1_id, status)
-        ");
-
-            $conn->exec("
-            CREATE INDEX IF NOT EXISTS idx_rooms_player2 ON rooms(player2_id, status)
-        ");
+                CREATE TABLE IF NOT EXISTS rooms (
+                    id VARCHAR(32) PRIMARY KEY,
+                    topic_id INT UNSIGNED NOT NULL,
+                    status VARCHAR(32) NOT NULL DEFAULT 'waiting',
+                    current_question_index INT NOT NULL DEFAULT 0,
+                    player1_id BIGINT,
+                    player2_id BIGINT,
+                    player1_ready TINYINT(1) DEFAULT 0,
+                    player2_ready TINYINT(1) DEFAULT 0,
+                    player1_message_id BIGINT,
+                    player2_message_id BIGINT,
+                    player1_answered TINYINT(1) DEFAULT 0,
+                    player2_answered TINYINT(1) DEFAULT 0,
+                    player1_first_answered TINYINT(1) DEFAULT 0,
+                    player2_first_answered TINYINT(1) DEFAULT 0,
+                    chat_revealed TINYINT(1) DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT fk_rooms_topic
+                        FOREIGN KEY (topic_id) REFERENCES topics(id),
+                    KEY idx_rooms_player1 (player1_id, status),
+                    KEY idx_rooms_player2 (player2_id, status)
+                ) ENGINE=InnoDB
+                  DEFAULT CHARSET=utf8mb4
+                  COLLATE=utf8mb4_unicode_ci
+            ");
 
             // Ответы
             $conn->exec("
-            CREATE TABLE IF NOT EXISTS answers (
-                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(32) NOT NULL,
-                user_id BIGINT NOT NULL,
-                question_index INT NOT NULL,
-                answer_text TEXT NOT NULL,
-                answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT fk_answers_room
-                    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
-                UNIQUE KEY uq_answer (room_id, user_id, question_index)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
-
-            $conn->exec("
-            CREATE INDEX IF NOT EXISTS idx_answers_room
-            ON answers(room_id, question_index)
-        ");
+                CREATE TABLE IF NOT EXISTS answers (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    room_id VARCHAR(32) NOT NULL,
+                    user_id BIGINT NOT NULL,
+                    question_index INT NOT NULL,
+                    answer_text TEXT NOT NULL,
+                    answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT fk_answers_room
+                        FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+                    UNIQUE KEY uq_answer (room_id, user_id, question_index),
+                    KEY idx_answers_room (room_id, question_index)
+                ) ENGINE=InnoDB
+                  DEFAULT CHARSET=utf8mb4
+                  COLLATE=utf8mb4_unicode_ci
+            ");
 
             // Сообщения чата
             $conn->exec("
-            CREATE TABLE IF NOT EXISTS chat_messages (
-                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(32) NOT NULL,
-                user_id BIGINT NOT NULL,
-                question_index INT NOT NULL,
-                message_type VARCHAR(16) NOT NULL DEFAULT 'text',
-                message_text TEXT,
-                voice_file_id VARCHAR(255),
-                video_note_file_id VARCHAR(255),
-                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT fk_chat_room
-                    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
-
-            $conn->exec("
-            CREATE INDEX IF NOT EXISTS idx_chat_messages_room
-            ON chat_messages(room_id, question_index)
-        ");
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    room_id VARCHAR(32) NOT NULL,
+                    user_id BIGINT NOT NULL,
+                    question_index INT NOT NULL,
+                    message_type VARCHAR(16) NOT NULL DEFAULT 'text',
+                    message_text TEXT,
+                    voice_file_id VARCHAR(255),
+                    video_note_file_id VARCHAR(255),
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT fk_chat_room
+                        FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+                    KEY idx_chat_messages_room (room_id, question_index)
+                ) ENGINE=InnoDB
+                  DEFAULT CHARSET=utf8mb4
+                  COLLATE=utf8mb4_unicode_ci
+            ");
         } else {
-            // ---------- SQLite схема (как у тебя и была) ----------
+            // ---------- SQLite схема ----------
 
             // Таблица тем
             $conn->exec("
-            CREATE TABLE IF NOT EXISTS topics (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ");
+                CREATE TABLE IF NOT EXISTS topics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ");
 
             // Таблица вопросов
             $conn->exec("
-            CREATE TABLE IF NOT EXISTS questions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                topic_id INTEGER NOT NULL,
-                question_text TEXT NOT NULL,
-                order_num INTEGER NOT NULL,
-                FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE CASCADE,
-                UNIQUE(topic_id, order_num)
-            )
-        ");
+                CREATE TABLE IF NOT EXISTS questions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic_id INTEGER NOT NULL,
+                    question_text TEXT NOT NULL,
+                    order_num INTEGER NOT NULL,
+                    FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE CASCADE,
+                    UNIQUE(topic_id, order_num)
+                )
+            ");
 
             // Таблица комнат
             $conn->exec("
-            CREATE TABLE IF NOT EXISTS rooms (
-                id TEXT PRIMARY KEY,
-                topic_id INTEGER NOT NULL,
-                status TEXT NOT NULL DEFAULT 'waiting',
-                current_question_index INTEGER NOT NULL DEFAULT 0,
-                player1_id INTEGER,
-                player2_id INTEGER,
-                player1_ready BOOLEAN DEFAULT 0,
-                player2_ready BOOLEAN DEFAULT 0,
-                player1_message_id INTEGER,
-                player2_message_id INTEGER,
-                player1_answered BOOLEAN DEFAULT 0,
-                player2_answered BOOLEAN DEFAULT 0,
-                player1_first_answered BOOLEAN DEFAULT 0,
-                player2_first_answered BOOLEAN DEFAULT 0,
-                chat_revealed BOOLEAN DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (topic_id) REFERENCES topics(id)
-            )
-        ");
+                CREATE TABLE IF NOT EXISTS rooms (
+                    id TEXT PRIMARY KEY,
+                    topic_id INTEGER NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'waiting',
+                    current_question_index INTEGER NOT NULL DEFAULT 0,
+                    player1_id INTEGER,
+                    player2_id INTEGER,
+                    player1_ready BOOLEAN DEFAULT 0,
+                    player2_ready BOOLEAN DEFAULT 0,
+                    player1_message_id INTEGER,
+                    player2_message_id INTEGER,
+                    player1_answered BOOLEAN DEFAULT 0,
+                    player2_answered BOOLEAN DEFAULT 0,
+                    player1_first_answered BOOLEAN DEFAULT 0,
+                    player2_first_answered BOOLEAN DEFAULT 0,
+                    chat_revealed BOOLEAN DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (topic_id) REFERENCES topics(id)
+                )
+            ");
 
             $conn->exec("
-            CREATE INDEX IF NOT EXISTS idx_rooms_player1 ON rooms(player1_id, status)
-        ");
+                CREATE INDEX IF NOT EXISTS idx_rooms_player1 ON rooms(player1_id, status)
+            ");
 
             $conn->exec("
-            CREATE INDEX IF NOT EXISTS idx_rooms_player2 ON rooms(player2_id, status)
-        ");
+                CREATE INDEX IF NOT EXISTS idx_rooms_player2 ON rooms(player2_id, status)
+            ");
 
             // Таблица ответов
             $conn->exec("
-            CREATE TABLE IF NOT EXISTS answers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                room_id TEXT NOT NULL,
-                user_id INTEGER NOT NULL,
-                question_index INTEGER NOT NULL,
-                answer_text TEXT NOT NULL,
-                answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
-                UNIQUE(room_id, user_id, question_index)
-            )
-        ");
+                CREATE TABLE IF NOT EXISTS answers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    room_id TEXT NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    question_index INTEGER NOT NULL,
+                    answer_text TEXT NOT NULL,
+                    answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+                    UNIQUE(room_id, user_id, question_index)
+                )
+            ");
 
             $conn->exec("
-            CREATE INDEX IF NOT EXISTS idx_answers_room ON answers(room_id, question_index)
-        ");
+                CREATE INDEX IF NOT EXISTS idx_answers_room ON answers(room_id, question_index)
+            ");
 
             // Таблица сообщений чата
             $conn->exec("
-            CREATE TABLE IF NOT EXISTS chat_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                room_id TEXT NOT NULL,
-                user_id INTEGER NOT NULL,
-                question_index INTEGER NOT NULL,
-                message_type TEXT NOT NULL DEFAULT 'text',
-                message_text TEXT,
-                voice_file_id TEXT,
-                video_note_file_id TEXT,
-                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
-            )
-        ");
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    room_id TEXT NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    question_index INTEGER NOT NULL,
+                    message_type TEXT NOT NULL DEFAULT 'text',
+                    message_text TEXT,
+                    voice_file_id TEXT,
+                    video_note_file_id TEXT,
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+                )
+            ");
 
             $conn->exec("
-            CREATE INDEX IF NOT EXISTS idx_chat_messages_room ON chat_messages(room_id, question_index)
-        ");
+                CREATE INDEX IF NOT EXISTS idx_chat_messages_room
+                ON chat_messages(room_id, question_index)
+            ");
         }
 
         echo "✓ База данных инициализирована\n";
     }
-
 
     /**
      * Получить список всех тем
@@ -287,9 +285,9 @@ class Database
     {
         $conn = self::getConnection();
         $stmt = $conn->prepare("
-            SELECT COUNT(*) as count FROM rooms
+            SELECT COUNT(*) AS count FROM rooms
             WHERE (player1_id = ? OR player2_id = ?)
-            AND status IN ('waiting', 'active')
+              AND status IN ('waiting', 'active')
         ");
         $stmt->execute([$userId, $userId]);
         $result = $stmt->fetch();
@@ -302,8 +300,8 @@ class Database
     public static function createRoom(int $topicId, int $creatorId): string
     {
         $roomId = self::generateRoomId();
-        $conn = self::getConnection();
-        $stmt = $conn->prepare("
+        $conn   = self::getConnection();
+        $stmt   = $conn->prepare("
             INSERT INTO rooms (id, topic_id, player1_id, status)
             VALUES (?, ?, ?, 'waiting')
         ");
@@ -340,7 +338,7 @@ class Database
         }
 
         // Нельзя присоединиться к своей же комнате
-        if ($row['player1_id'] == $userId) {
+        if ((int)$row['player1_id'] === $userId) {
             return false;
         }
 
@@ -374,7 +372,7 @@ class Database
      */
     public static function addQuestionsToTopic(int $topicId, array $questions): int
     {
-        $conn = self::getConnection();
+        $conn       = self::getConnection();
         $addedCount = 0;
 
         foreach ($questions as $orderNum => $questionText) {
@@ -398,7 +396,7 @@ class Database
         $stmt = $conn->prepare("
             SELECT * FROM rooms
             WHERE (player1_id = ? OR player2_id = ?)
-            AND status = 'active'
+              AND status = 'active'
             LIMIT 1
         ");
         $stmt->execute([$userId, $userId]);
@@ -415,7 +413,7 @@ class Database
         $stmt = $conn->prepare("
             SELECT * FROM rooms
             WHERE (player1_id = ? OR player2_id = ?)
-            AND status IN ('waiting', 'active')
+              AND status IN ('waiting', 'active')
             LIMIT 1
         ");
         $stmt->execute([$userId, $userId]);
@@ -445,7 +443,7 @@ class Database
     {
         $conn = self::getConnection();
         $stmt = $conn->prepare("
-            SELECT COUNT(*) as count FROM questions WHERE topic_id = ?
+            SELECT COUNT(*) AS count FROM questions WHERE topic_id = ?
         ");
         $stmt->execute([$topicId]);
         $result = $stmt->fetch();
@@ -457,17 +455,17 @@ class Database
      */
     public static function saveAnswer(string $roomId, int $userId, int $questionIndex, string $answerText): void
     {
-        $conn = self::getConnection();
+        $conn   = self::getConnection();
         $dbType = getenv('DB_TYPE') ?: ($_ENV['DB_TYPE'] ?? 'sqlite');
 
         if ($dbType === 'mysql') {
-            // MySQL: используем REPLACE INTO
+            // MySQL: REPLACE INTO (удалить-старую/вставить-новую по unique)
             $stmt = $conn->prepare("
                 REPLACE INTO answers (room_id, user_id, question_index, answer_text)
                 VALUES (?, ?, ?, ?)
             ");
         } else {
-            // SQLite: используем INSERT OR REPLACE
+            // SQLite: INSERT OR REPLACE
             $stmt = $conn->prepare("
                 INSERT OR REPLACE INTO answers (room_id, user_id, question_index, answer_text)
                 VALUES (?, ?, ?, ?)
@@ -507,13 +505,13 @@ class Database
         }
 
         $stmt = $conn->prepare("
-            SELECT COUNT(*) as count FROM answers
+            SELECT COUNT(*) AS count FROM answers
             WHERE room_id = ? AND question_index = ?
-            AND user_id IN (?, ?)
+              AND user_id IN (?, ?)
         ");
         $stmt->execute([$roomId, $questionIndex, $row['player1_id'], $row['player2_id']]);
         $result = $stmt->fetch();
-        return $result['count'] == 2;
+        return (int)$result['count'] === 2;
     }
 
     /**
@@ -532,10 +530,10 @@ class Database
 
         $readyValue = $ready ? 1 : 0;
 
-        if ($userId == $row['player1_id']) {
+        if ((int)$row['player1_id'] === $userId) {
             $stmt = $conn->prepare("UPDATE rooms SET player1_ready = ? WHERE id = ?");
             $stmt->execute([$readyValue, $roomId]);
-        } elseif ($userId == $row['player2_id']) {
+        } elseif ((int)$row['player2_id'] === $userId) {
             $stmt = $conn->prepare("UPDATE rooms SET player2_ready = ? WHERE id = ?");
             $stmt->execute([$readyValue, $roomId]);
         }
@@ -557,7 +555,7 @@ class Database
             return false;
         }
 
-        return $row['player1_ready'] == 1 && $row['player2_ready'] == 1;
+        return (int)$row['player1_ready'] === 1 && (int)$row['player2_ready'] === 1;
     }
 
     /**
@@ -576,15 +574,15 @@ class Database
             return false;
         }
 
-        $nextIndex = $row['current_question_index'] + 1;
+        $nextIndex = (int)$row['current_question_index'] + 1;
 
         // Проверяем, есть ли ещё вопросы
         $stmt = $conn->prepare("
-            SELECT COUNT(*) as count FROM questions WHERE topic_id = ? AND order_num = ?
+            SELECT COUNT(*) AS count FROM questions WHERE topic_id = ? AND order_num = ?
         ");
         $stmt->execute([$row['topic_id'], $nextIndex]);
         $result = $stmt->fetch();
-        $hasNext = $result['count'] > 0;
+        $hasNext = (int)$result['count'] > 0;
 
         if ($hasNext) {
             // Переходим к следующему вопросу и сбрасываем флаги
@@ -599,14 +597,14 @@ class Database
             ");
             $stmt->execute([$nextIndex, $roomId]);
             return true;
-        } else {
-            // Вопросы закончились
-            $stmt = $conn->prepare("
-                UPDATE rooms SET status = 'finished' WHERE id = ?
-            ");
-            $stmt->execute([$roomId]);
-            return false;
         }
+
+        // Вопросы закончились
+        $stmt = $conn->prepare("
+            UPDATE rooms SET status = 'finished' WHERE id = ?
+        ");
+        $stmt->execute([$roomId]);
+        return false;
     }
 
     /**
@@ -623,7 +621,9 @@ class Database
             return null;
         }
 
-        return $userId == $row['player1_id'] ? $row['player2_id'] : $row['player1_id'];
+        return (int)$userId === (int)$row['player1_id']
+            ? (int)$row['player2_id']
+            : (int)$row['player1_id'];
     }
 
     /**
@@ -669,10 +669,10 @@ class Database
             return;
         }
 
-        if ($userId == $row['player1_id']) {
+        if ((int)$row['player1_id'] === $userId) {
             $stmt = $conn->prepare("UPDATE rooms SET player1_message_id = ? WHERE id = ?");
             $stmt->execute([$messageId, $roomId]);
-        } elseif ($userId == $row['player2_id']) {
+        } elseif ((int)$row['player2_id'] === $userId) {
             $stmt = $conn->prepare("UPDATE rooms SET player2_message_id = ? WHERE id = ?");
             $stmt->execute([$messageId, $roomId]);
         }
@@ -694,11 +694,11 @@ class Database
             return null;
         }
 
-        if ($userId == $row['player1_id']) {
-            return $row['player1_message_id'];
-        } else {
-            return $row['player2_message_id'];
+        if ((int)$row['player1_id'] === $userId) {
+            return $row['player1_message_id'] !== null ? (int)$row['player1_message_id'] : null;
         }
+
+        return $row['player2_message_id'] !== null ? (int)$row['player2_message_id'] : null;
     }
 
     /**
@@ -717,10 +717,10 @@ class Database
 
         $answeredValue = $answered ? 1 : 0;
 
-        if ($userId == $row['player1_id']) {
+        if ((int)$row['player1_id'] === $userId) {
             $stmt = $conn->prepare("UPDATE rooms SET player1_answered = ? WHERE id = ?");
             $stmt->execute([$answeredValue, $roomId]);
-        } elseif ($userId == $row['player2_id']) {
+        } elseif ((int)$row['player2_id'] === $userId) {
             $stmt = $conn->prepare("UPDATE rooms SET player2_answered = ? WHERE id = ?");
             $stmt->execute([$answeredValue, $roomId]);
         }
@@ -742,7 +742,10 @@ class Database
             return [false, false];
         }
 
-        return [$row['player1_answered'] == 1, $row['player2_answered'] == 1];
+        return [
+            (int)$row['player1_answered'] === 1,
+            (int)$row['player2_answered'] === 1,
+        ];
     }
 
     /**
@@ -771,10 +774,25 @@ class Database
     ): void {
         $conn = self::getConnection();
         $stmt = $conn->prepare("
-            INSERT INTO chat_messages (room_id, user_id, question_index, message_type, message_text, voice_file_id, video_note_file_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO chat_messages (
+                room_id,
+                user_id,
+                question_index,
+                message_type,
+                message_text,
+                voice_file_id,
+                video_note_file_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$roomId, $userId, $questionIndex, $messageType, $messageText, $voiceFileId, $videoNoteFileId]);
+        $stmt->execute([
+            $roomId,
+            $userId,
+            $questionIndex,
+            $messageType,
+            $messageText,
+            $voiceFileId,
+            $videoNoteFileId,
+        ]);
     }
 
     /**
@@ -784,8 +802,15 @@ class Database
     {
         $conn = self::getConnection();
         $stmt = $conn->prepare("
-            SELECT user_id, message_type, message_text, voice_file_id, video_note_file_id, sent_at FROM chat_messages
-            WHERE room_id = ? AND question_index = ?
+            SELECT user_id,
+                   message_type,
+                   message_text,
+                   voice_file_id,
+                   video_note_file_id,
+                   sent_at
+            FROM chat_messages
+            WHERE room_id = ?
+              AND question_index = ?
             ORDER BY sent_at ASC
         ");
         $stmt->execute([$roomId, $questionIndex]);
@@ -808,10 +833,10 @@ class Database
 
         $value = $firstAnswered ? 1 : 0;
 
-        if ($userId == $row['player1_id']) {
+        if ((int)$row['player1_id'] === $userId) {
             $stmt = $conn->prepare("UPDATE rooms SET player1_first_answered = ? WHERE id = ?");
             $stmt->execute([$value, $roomId]);
-        } elseif ($userId == $row['player2_id']) {
+        } elseif ((int)$row['player2_id'] === $userId) {
             $stmt = $conn->prepare("UPDATE rooms SET player2_first_answered = ? WHERE id = ?");
             $stmt->execute([$value, $roomId]);
         }
@@ -824,7 +849,8 @@ class Database
     {
         $conn = self::getConnection();
         $stmt = $conn->prepare("
-            SELECT player1_first_answered, player2_first_answered FROM rooms WHERE id = ?
+            SELECT player1_first_answered, player2_first_answered
+            FROM rooms WHERE id = ?
         ");
         $stmt->execute([$roomId]);
         $row = $stmt->fetch();
@@ -833,7 +859,10 @@ class Database
             return [false, false];
         }
 
-        return [$row['player1_first_answered'] == 1, $row['player2_first_answered'] == 1];
+        return [
+            (int)$row['player1_first_answered'] === 1,
+            (int)$row['player2_first_answered'] === 1,
+        ];
     }
 
     /**
@@ -844,13 +873,18 @@ class Database
         $conn = self::getConnection();
 
         $stmt = $conn->prepare("
-            DELETE FROM chat_messages WHERE room_id = ? AND question_index = ?
+            DELETE FROM chat_messages
+            WHERE room_id = ? AND question_index = ?
         ");
         $stmt->execute([$roomId, $questionIndex]);
 
         $stmt = $conn->prepare("
-            UPDATE rooms SET player1_first_answered = 0, player2_first_answered = 0,
-                            player1_answered = 0, player2_answered = 0, chat_revealed = 0
+            UPDATE rooms
+            SET player1_first_answered = 0,
+                player2_first_answered = 0,
+                player1_answered = 0,
+                player2_answered = 0,
+                chat_revealed = 0
             WHERE id = ?
         ");
         $stmt->execute([$roomId]);
@@ -867,7 +901,7 @@ class Database
     }
 
     /**
-     * Проверить раскрыт ли чат
+     * Проверить, раскрыт ли чат
      */
     public static function isChatRevealed(string $roomId): bool
     {
@@ -880,6 +914,6 @@ class Database
             return false;
         }
 
-        return $row['chat_revealed'] == 1;
+        return (int)$row['chat_revealed'] === 1;
     }
 }
