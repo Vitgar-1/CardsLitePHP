@@ -44,8 +44,8 @@ CREATE TABLE IF NOT EXISTS rooms (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Индексы для комнат
-CREATE INDEX IF NOT EXISTS idx_rooms_player1 ON rooms(player1_id, status);
-CREATE INDEX IF NOT EXISTS idx_rooms_player2 ON rooms(player2_id, status);
+CREATE INDEX idx_rooms_player1 ON rooms(player1_id, status);
+CREATE INDEX idx_rooms_player2 ON rooms(player2_id, status);
 
 -- Таблица ответов
 CREATE TABLE IF NOT EXISTS answers (
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS answers (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Индекс для ответов
-CREATE INDEX IF NOT EXISTS idx_answers_room ON answers(room_id, question_index);
+CREATE INDEX idx_answers_room ON answers(room_id, question_index);
 
 -- Таблица сообщений чата
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -77,4 +77,4 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Индекс для сообщений чата
-CREATE INDEX IF NOT EXISTS idx_chat_messages_room ON chat_messages(room_id, question_index);
+CREATE INDEX idx_chat_messages_room ON chat_messages(room_id, question_index);
