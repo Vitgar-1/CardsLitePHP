@@ -11,7 +11,6 @@ use PDOException;
 class Database
 {
     private static ?PDO $connection = null;
-    private const DB_NAME = 'cardslite.db';
 
     /**
      * Получить соединение с БД
@@ -20,7 +19,24 @@ class Database
     {
         if (self::$connection === null) {
             try {
-                self::$connection = new PDO('sqlite:' . self::DB_NAME);
+                $dbType = getenv('DB_TYPE') ?: ($_ENV['DB_TYPE'] ?? 'sqlite');
+
+                if ($dbType === 'mysql') {
+                    // Подключение к MySQL
+                    $host = getenv('DB_HOST') ?: ($_ENV['DB_HOST'] ?? 'localhost');
+                    $port = getenv('DB_PORT') ?: ($_ENV['DB_PORT'] ?? '3306');
+                    $dbName = getenv('DB_NAME') ?: ($_ENV['DB_NAME'] ?? 'cardslite');
+                    $user = getenv('DB_USER') ?: ($_ENV['DB_USER'] ?? 'root');
+                    $pass = getenv('DB_PASS') ?: ($_ENV['DB_PASS'] ?? '');
+
+                    $dsn = "mysql:host={$host};port={$port};dbname={$dbName};charset=utf8mb4";
+                    self::$connection = new PDO($dsn, $user, $pass);
+                } else {
+                    // Подключение к SQLite (по умолчанию)
+                    $dbFile = getenv('DB_SQLITE_FILE') ?: ($_ENV['DB_SQLITE_FILE'] ?? 'cardslite.db');
+                    self::$connection = new PDO('sqlite:' . $dbFile);
+                }
+
                 self::$connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
                 self::$connection->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
             } catch (PDOException $e) {
@@ -338,10 +354,22 @@ class Database
     public static function saveAnswer(string $roomId, int $userId, int $questionIndex, string $answerText): void
     {
         $conn = self::getConnection();
-        $stmt = $conn->prepare("
-            INSERT OR REPLACE INTO answers (room_id, user_id, question_index, answer_text)
-            VALUES (?, ?, ?, ?)
-        ");
+        $dbType = getenv('DB_TYPE') ?: ($_ENV['DB_TYPE'] ?? 'sqlite');
+
+        if ($dbType === 'mysql') {
+            // MySQL: используем REPLACE INTO
+            $stmt = $conn->prepare("
+                REPLACE INTO answers (room_id, user_id, question_index, answer_text)
+                VALUES (?, ?, ?, ?)
+            ");
+        } else {
+            // SQLite: используем INSERT OR REPLACE
+            $stmt = $conn->prepare("
+                INSERT OR REPLACE INTO answers (room_id, user_id, question_index, answer_text)
+                VALUES (?, ?, ?, ?)
+            ");
+        }
+
         $stmt->execute([$roomId, $userId, $questionIndex, $answerText]);
     }
 
