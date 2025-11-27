@@ -4,3 +4,5 @@ cardslite.db
 composer.lock
 *.log
 /.idea
+/mds/
+/CLAUDE.md
