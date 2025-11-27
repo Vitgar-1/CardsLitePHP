@@ -5,10 +5,18 @@ services:
       dockerfile: Dockerfile
     container_name: cardslite-bot
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - ADMIN_ID=${ADMIN_ID}
-      - DB_PATH=/app/data/cardslite.db
+      - DB_TYPE=${DB_TYPE:-sqlite}
+      - DB_HOST=${DB_HOST:-localhost}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_NAME=${DB_NAME:-cardslite}
+      - DB_USER=${DB_USER:-root}
+      - DB_PASS=${DB_PASS:-}
+      - DB_SQLITE_FILE=${DB_SQLITE_FILE:-/app/data/cardslite.db}
     volumes:
       - ./data:/app/data
     logging:
