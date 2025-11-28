@@ -35,6 +35,13 @@ $telegram = new Api($botToken);
 // Хранилище для состояний пользователей (в продакшене использовать БД или Redis)
 $userStates = [];
 
+// Константы для сообщений
+const MSG_WAITING_FOR_ANSWER = "⏳ Собеседник уже ответил на вопрос!\nЕго ответ откроется после вашего ответа.";
+const MSG_CHAT_REVEALED = "💬 Теперь вы можете свободно переписываться. Нажмите [▶️ Далее] когда будете готовы к следующему вопросу:";
+const MSG_ANSWER_FIRST = "⚠️ Сначала ответьте на вопрос перед тем как нажимать [▶️ Далее]!";
+const MSG_EXIT_GAME = "👋 Вы вышли из игры.\n\n/start - вернуться в меню";
+const MSG_PARTNER_LEFT = "⚠️ Ваш собеседник вышел из игры.\n\n/start - вернуться в меню";
+
 echo "🤖 Бот запущен\n";
 
 // Функция для отправки сообщения с обработкой ошибок
@@ -62,6 +69,73 @@ function sendMessage($telegram, $chatId, $text, $replyMarkup = null, $parseMode 
         error_log("Ошибка отправки сообщения: " . $e->getMessage());
         return null;
     }
+}
+
+/**
+ * Отправка медиа-файла обоим игрокам
+ */
+function sendMediaToPlayers($telegram, array $msg, int $chatId, int $otherPlayerId): void
+{
+    $msgType = $msg['message_type'] ?? 'text';
+
+    if ($msgType === 'voice' && !empty($msg['voice_file_id'])) {
+        try {
+            $telegram->sendVoice(['chat_id' => $chatId, 'voice' => $msg['voice_file_id']]);
+            $telegram->sendVoice(['chat_id' => $otherPlayerId, 'voice' => $msg['voice_file_id']]);
+        } catch (Exception $e) {
+            error_log("Ошибка отправки голосового: " . $e->getMessage());
+        }
+    } elseif ($msgType === 'video_note' && !empty($msg['video_note_file_id'])) {
+        try {
+            $telegram->sendVideoNote(['chat_id' => $chatId, 'video_note' => $msg['video_note_file_id']]);
+            $telegram->sendVideoNote(['chat_id' => $otherPlayerId, 'video_note' => $msg['video_note_file_id']]);
+        } catch (Exception $e) {
+            error_log("Ошибка отправки видео: " . $e->getMessage());
+        }
+    }
+}
+
+/**
+ * Обновление статуса "первый ответивший" для игрока
+ */
+function updateFirstAnswered(array $room, int $userId, array $firstAnswered): array
+{
+    [$player1First, $player2First] = $firstAnswered;
+
+    if ($userId == $room['player1_id'] && !$player1First) {
+        Database::setPlayerFirstAnswered($room['id'], $userId, true);
+        $player1First = true;
+    } elseif ($userId == $room['player2_id'] && !$player2First) {
+        Database::setPlayerFirstAnswered($room['id'], $userId, true);
+        $player2First = true;
+    }
+
+    return [$player1First, $player2First];
+}
+
+/**
+ * Раскрытие чата после того, как оба игрока ответили
+ */
+function revealChat($telegram, array $room, int $chatId, int $otherPlayerId, int $currentQuestionIndex): void
+{
+    $roomId = $room['id'];
+    $chatMessages = Database::getChatMessages($roomId, $currentQuestionIndex);
+
+    // Отправляем медиафайлы обоим игрокам
+    foreach ($chatMessages as $msg) {
+        sendMediaToPlayers($telegram, $msg, $chatId, $otherPlayerId);
+    }
+
+    // Отправляем текстовую историю чата
+    $chatHistory = UI::formatChatHistory($chatMessages, $room['player1_id']);
+    sendMessage($telegram, $chatId, $chatHistory);
+    sendMessage($telegram, $otherPlayerId, $chatHistory);
+
+    Database::setChatRevealed($roomId);
+
+    // Сообщаем обоим игрокам, что чат открыт
+    sendMessage($telegram, $chatId, MSG_CHAT_REVEALED, UI::getGameNextKeyboard());
+    sendMessage($telegram, $otherPlayerId, MSG_CHAT_REVEALED, UI::getGameNextKeyboard());
 }
 
 // Обработчик команды /start
@@ -392,13 +466,13 @@ function handleTextMessage($telegram, $update, &$userStates): void
             Database::deleteRoom($roomId);
 
             sendMessage($telegram, $chatId,
-                "👋 Вы вышли из игры.\n\n/start - вернуться в меню",
+                MSG_EXIT_GAME,
                 UI::getRemoveKeyboard()
             );
 
             if ($otherPlayerId) {
                 sendMessage($telegram, $otherPlayerId,
-                    "⚠️ Ваш собеседник вышел из игры.\n\n/start - вернуться в меню"
+                    MSG_PARTNER_LEFT
                 );
             }
         }
@@ -424,10 +498,10 @@ function handleNextButton($telegram, $chatId, $userId): void
     [$player1Answered, $player2Answered] = Database::checkAnswerStatus($roomId);
 
     if ($userId == $room['player1_id'] && !$player1Answered) {
-        sendMessage($telegram, $chatId, "⚠️ Сначала ответьте на вопрос перед тем как нажимать [▶️ Далее]!");
+        sendMessage($telegram, $chatId, MSG_ANSWER_FIRST);
         return;
     } elseif ($userId == $room['player2_id'] && !$player2Answered) {
-        sendMessage($telegram, $chatId, "⚠️ Сначала ответьте на вопрос перед тем как нажимать [▶️ Далее]!");
+        sendMessage($telegram, $chatId, MSG_ANSWER_FIRST);
         return;
     }
 
@@ -502,41 +576,15 @@ function handleChatMessage($telegram, $chatId, $userId, $messageText): void
     }
 
     // Чат еще не раскрыт
-    [$player1First, $player2First] = Database::checkFirstAnsweredStatus($roomId);
-
-    if ($userId == $room['player1_id'] && !$player1First) {
-        Database::setPlayerFirstAnswered($roomId, $userId, true);
-        $player1First = true;
-    } elseif ($userId == $room['player2_id'] && !$player2First) {
-        Database::setPlayerFirstAnswered($roomId, $userId, true);
-        $player2First = true;
-    }
+    $firstAnswered = Database::checkFirstAnsweredStatus($roomId);
+    [$player1First, $player2First] = updateFirstAnswered($room, $userId, $firstAnswered);
 
     sendMessage($telegram, $chatId, "✅ Сообщение отправлено!", UI::getRemoveKeyboard());
 
     if ($player1First && $player2First) {
-        // Оба ответили - раскрываем чат
-        $chatMessages = Database::getChatMessages($roomId, $currentQuestionIndex);
-        $chatHistory = UI::formatChatHistory($chatMessages, $room['player1_id']);
-
-        sendMessage($telegram, $chatId, $chatHistory);
-        sendMessage($telegram, $otherPlayerId, $chatHistory);
-
-        Database::setChatRevealed($roomId);
-
-        sendMessage($telegram, $chatId,
-            "💬 Теперь вы можете свободно переписываться. Нажмите [▶️ Далее] когда будете готовы к следующему вопросу:",
-            UI::getGameNextKeyboard()
-        );
-        sendMessage($telegram, $otherPlayerId,
-            "💬 Теперь вы можете свободно переписываться. Нажмите [▶️ Далее] когда будете готовы к следующему вопросу:",
-            UI::getGameNextKeyboard()
-        );
+        revealChat($telegram, $room, $chatId, $otherPlayerId, $currentQuestionIndex);
     } else {
-        sendMessage($telegram, $otherPlayerId,
-            "⏳ Собеседник уже ответил на вопрос!\n"
-            . "Его ответ откроется после вашего ответа."
-        );
+        sendMessage($telegram, $otherPlayerId, MSG_WAITING_FOR_ANSWER);
     }
 }
 
@@ -557,7 +605,6 @@ function handleVoiceMessage($telegram, $update): void
     $currentQuestionIndex = $room['current_question_index'];
     $voiceFileId = $voice->fileId;
 
-    error_log("Сохранение голосового сообщения: room={$roomId}, user={$userId}, fileId={$voiceFileId}");
     Database::saveChatMessage($roomId, $userId, $currentQuestionIndex, null, $voiceFileId, null, 'voice');
     Database::setPlayerAnswered($roomId, $userId, true);
 
@@ -568,89 +615,20 @@ function handleVoiceMessage($telegram, $update): void
 
     if (Database::isChatRevealed($roomId)) {
         // Чат раскрыт - пересылаем голосовое сообщение
-        $telegram->sendVoice([
-            'chat_id' => $otherPlayerId,
-            'voice' => $voiceFileId
-        ]);
+        $telegram->sendVoice(['chat_id' => $otherPlayerId, 'voice' => $voiceFileId]);
         return;
     }
 
     // Чат еще не раскрыт
-    [$player1First, $player2First] = Database::checkFirstAnsweredStatus($roomId);
-    error_log("Статус ответов до: player1First={$player1First}, player2First={$player2First}");
+    $firstAnswered = Database::checkFirstAnsweredStatus($roomId);
+    [$player1First, $player2First] = updateFirstAnswered($room, $userId, $firstAnswered);
 
-    if ($userId == $room['player1_id'] && !$player1First) {
-        Database::setPlayerFirstAnswered($roomId, $userId, true);
-        $player1First = true;
-    } elseif ($userId == $room['player2_id'] && !$player2First) {
-        Database::setPlayerFirstAnswered($roomId, $userId, true);
-        $player2First = true;
-    }
-
-    error_log("Статус ответов после: player1First={$player1First}, player2First={$player2First}");
     sendMessage($telegram, $chatId, "✅ Голосовое сообщение отправлено!", UI::getRemoveKeyboard());
 
     if ($player1First && $player2First) {
-        error_log("Оба игрока ответили! Раскрываем чат.");
-        // Оба ответили - раскрываем чат
-        $chatMessages = Database::getChatMessages($roomId, $currentQuestionIndex);
-        error_log("Раскрытие чата: найдено " . count($chatMessages) . " сообщений");
-
-        // Отправляем медиафайлы обоим игрокам
-        foreach ($chatMessages as $msg) {
-            $msgType = $msg['message_type'] ?? 'text';
-            error_log("Обработка сообщения типа: {$msgType}");
-
-            if ($msgType === 'voice' && !empty($msg['voice_file_id'])) {
-                error_log("Отправка голосового сообщения обоим игрокам: " . $msg['voice_file_id']);
-                try {
-                    $telegram->sendVoice([
-                        'chat_id' => $chatId,
-                        'voice' => $msg['voice_file_id']
-                    ]);
-                    $telegram->sendVoice([
-                        'chat_id' => $otherPlayerId,
-                        'voice' => $msg['voice_file_id']
-                    ]);
-                } catch (Exception $e) {
-                    error_log("Ошибка отправки голосового: " . $e->getMessage());
-                }
-            } elseif ($msgType === 'video_note' && !empty($msg['video_note_file_id'])) {
-                error_log("Отправка видеосообщения обоим игрокам: " . $msg['video_note_file_id']);
-                try {
-                    $telegram->sendVideoNote([
-                        'chat_id' => $chatId,
-                        'video_note' => $msg['video_note_file_id']
-                    ]);
-                    $telegram->sendVideoNote([
-                        'chat_id' => $otherPlayerId,
-                        'video_note' => $msg['video_note_file_id']
-                    ]);
-                } catch (Exception $e) {
-                    error_log("Ошибка отправки видео: " . $e->getMessage());
-                }
-            }
-        }
-
-        $chatHistory = UI::formatChatHistory($chatMessages, $room['player1_id']);
-        sendMessage($telegram, $chatId, $chatHistory);
-        sendMessage($telegram, $otherPlayerId, $chatHistory);
-
-        Database::setChatRevealed($roomId);
-
-        sendMessage($telegram, $chatId,
-            "💬 Теперь вы можете свободно переписываться. Нажмите [▶️ Далее] когда будете готовы к следующему вопросу:",
-            UI::getGameNextKeyboard()
-        );
-        sendMessage($telegram, $otherPlayerId,
-            "💬 Теперь вы можете свободно переписываться. Нажмите [▶️ Далее] когда будете готовы к следующему вопросу:",
-            UI::getGameNextKeyboard()
-        );
+        revealChat($telegram, $room, $chatId, $otherPlayerId, $currentQuestionIndex);
     } else {
-        sendMessage($telegram, $otherPlayerId,
-            "⏳ Собеседник уже ответил на вопрос!\n"
-            . "Его ответ откроется после вашего ответа."
-        );
+        sendMessage($telegram, $otherPlayerId, MSG_WAITING_FOR_ANSWER);
     }
 }
 
@@ -671,7 +649,6 @@ function handleVideoMessage($telegram, $update): void
     $currentQuestionIndex = $room['current_question_index'];
     $videoNoteFileId = $videoNote->fileId;
 
-    error_log("Сохранение видеосообщения: room={$roomId}, user={$userId}, fileId={$videoNoteFileId}");
     Database::saveChatMessage($roomId, $userId, $currentQuestionIndex, null, null, $videoNoteFileId, 'video_note');
     Database::setPlayerAnswered($roomId, $userId, true);
 
@@ -682,89 +659,20 @@ function handleVideoMessage($telegram, $update): void
 
     if (Database::isChatRevealed($roomId)) {
         // Чат раскрыт - пересылаем видеосообщение
-        $telegram->sendVideoNote([
-            'chat_id' => $otherPlayerId,
-            'video_note' => $videoNoteFileId
-        ]);
+        $telegram->sendVideoNote(['chat_id' => $otherPlayerId, 'video_note' => $videoNoteFileId]);
         return;
     }
 
     // Чат еще не раскрыт
-    [$player1First, $player2First] = Database::checkFirstAnsweredStatus($roomId);
-    error_log("Статус ответов до: player1First={$player1First}, player2First={$player2First}");
+    $firstAnswered = Database::checkFirstAnsweredStatus($roomId);
+    [$player1First, $player2First] = updateFirstAnswered($room, $userId, $firstAnswered);
 
-    if ($userId == $room['player1_id'] && !$player1First) {
-        Database::setPlayerFirstAnswered($roomId, $userId, true);
-        $player1First = true;
-    } elseif ($userId == $room['player2_id'] && !$player2First) {
-        Database::setPlayerFirstAnswered($roomId, $userId, true);
-        $player2First = true;
-    }
-
-    error_log("Статус ответов после: player1First={$player1First}, player2First={$player2First}");
     sendMessage($telegram, $chatId, "✅ Видеосообщение отправлено!", UI::getRemoveKeyboard());
 
     if ($player1First && $player2First) {
-        error_log("Оба игрока ответили! Раскрываем чат.");
-        // Оба ответили - раскрываем чат
-        $chatMessages = Database::getChatMessages($roomId, $currentQuestionIndex);
-        error_log("Раскрытие чата: найдено " . count($chatMessages) . " сообщений");
-
-        // Отправляем медиафайлы обоим игрокам
-        foreach ($chatMessages as $msg) {
-            $msgType = $msg['message_type'] ?? 'text';
-            error_log("Обработка сообщения типа: {$msgType}");
-
-            if ($msgType === 'voice' && !empty($msg['voice_file_id'])) {
-                error_log("Отправка голосового сообщения обоим игрокам: " . $msg['voice_file_id']);
-                try {
-                    $telegram->sendVoice([
-                        'chat_id' => $chatId,
-                        'voice' => $msg['voice_file_id']
-                    ]);
-                    $telegram->sendVoice([
-                        'chat_id' => $otherPlayerId,
-                        'voice' => $msg['voice_file_id']
-                    ]);
-                } catch (Exception $e) {
-                    error_log("Ошибка отправки голосового: " . $e->getMessage());
-                }
-            } elseif ($msgType === 'video_note' && !empty($msg['video_note_file_id'])) {
-                error_log("Отправка видеосообщения обоим игрокам: " . $msg['video_note_file_id']);
-                try {
-                    $telegram->sendVideoNote([
-                        'chat_id' => $chatId,
-                        'video_note' => $msg['video_note_file_id']
-                    ]);
-                    $telegram->sendVideoNote([
-                        'chat_id' => $otherPlayerId,
-                        'video_note' => $msg['video_note_file_id']
-                    ]);
-                } catch (Exception $e) {
-                    error_log("Ошибка отправки видео: " . $e->getMessage());
-                }
-            }
-        }
-
-        $chatHistory = UI::formatChatHistory($chatMessages, $room['player1_id']);
-        sendMessage($telegram, $chatId, $chatHistory);
-        sendMessage($telegram, $otherPlayerId, $chatHistory);
-
-        Database::setChatRevealed($roomId);
-
-        sendMessage($telegram, $chatId,
-            "💬 Теперь вы можете свободно переписываться. Нажмите [▶️ Далее] когда будете готовы к следующему вопросу:",
-            UI::getGameNextKeyboard()
-        );
-        sendMessage($telegram, $otherPlayerId,
-            "💬 Теперь вы можете свободно переписываться. Нажмите [▶️ Далее] когда будете готовы к следующему вопросу:",
-            UI::getGameNextKeyboard()
-        );
+        revealChat($telegram, $room, $chatId, $otherPlayerId, $currentQuestionIndex);
     } else {
-        sendMessage($telegram, $otherPlayerId,
-            "⏳ Собеседник уже ответил на вопрос!\n"
-            . "Его ответ откроется после вашего ответа."
-        );
+        sendMessage($telegram, $otherPlayerId, MSG_WAITING_FOR_ANSWER);
     }
 }
 

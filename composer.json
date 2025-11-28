@@ -12,7 +12,8 @@
     },
     "autoload": {
         "psr-4": {
-            "CardsLite\\": "src/"
+            "CardsLite\\": "src/",
+            "App\\Models\\": "app/Models/"
         }
     },
     "license": "MIT",
