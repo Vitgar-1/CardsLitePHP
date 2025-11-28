@@ -5,8 +5,9 @@ services:
       dockerfile: Dockerfile
     container_name: cardslite-bot
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    # extra_hosts not needed with network_mode: host
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
     environment:
       - APP_ENV=${APP_ENV:-production}
       - BOT_TOKEN=${BOT_TOKEN}
