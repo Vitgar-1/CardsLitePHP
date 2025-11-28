@@ -23,4 +23,4 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    command: sh -c "php migrate migrate && php bot.php"
+    command: sh -c "./migrate migrate && php bot.php"

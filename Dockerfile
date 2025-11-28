@@ -22,4 +22,7 @@ COPY . .
 
 RUN mkdir -p /app/data && chmod 777 /app/data
 
+# Make migrate script executable
+RUN chmod +x /app/migrate
+
 CMD ["php", "bot.php"]
