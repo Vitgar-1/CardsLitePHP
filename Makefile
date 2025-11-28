@@ -51,6 +51,10 @@ ps: ## Показать статус контейнеров
 
 .PHONY: build
 build: ## Пересобрать Docker образ
+	docker compose -f $(COMPOSE_FILE) build
+
+.PHONY: build-no-cache
+build-no-cache: ## Пересобрать Docker образ без кеша (медленно!)
 	docker compose -f $(COMPOSE_FILE) build --no-cache
 
 # ==================== SHELL ====================
