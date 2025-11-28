@@ -95,7 +95,7 @@ function handleTopics($telegram, $update): void
     foreach ($topics as $topic) {
         $topicsText .= "{$topic['id']}. {$topic['name']}\n";
     }
-    $topicsText .= "\n💡 Используйте /create_room <topic_id> чтобы создать комнату";
+    $topicsText .= "\n💡 Используйте /create_room &lt;topic_id&gt; чтобы создать комнату";
 
     sendMessage($telegram, $chatId, $topicsText);
 }
@@ -109,7 +109,7 @@ function handleCreateRoom($telegram, $update, $args): void
     if (empty($args)) {
         sendMessage($telegram, $chatId,
             "❌ Укажите ID темы.\n"
-            . "Использование: /create_room <topic_id>\n"
+            . "Использование: /create_room &lt;topic_id&gt;\n"
             . "Посмотрите доступные темы: /topics"
         );
         return;
@@ -249,8 +249,8 @@ function handleStop($telegram, $update): void
         "👋 Вы покинули игровую комнату.\n\n"
         . "💡 Что дальше?\n"
         . "/topics - посмотреть доступные темы\n"
-        . "/create_room <topic_id> - создать новую комнату\n"
-        . "/join_room <room_id> - присоединиться к комнате",
+        . "/create_room &lt;topic_id&gt; - создать новую комнату\n"
+        . "/join_room &lt;room_id&gt; - присоединиться к комнате",
         UI::getRemoveKeyboard()
     );
 
@@ -259,8 +259,8 @@ function handleStop($telegram, $update): void
             "⚠️ Ваш собеседник покинул игровую комнату.\n\n"
             . "💡 Что дальше?\n"
             . "/topics - посмотреть доступные темы\n"
-            . "/create_room <topic_id> - создать новую комнату\n"
-            . "/join_room <room_id> - присоединиться к комнате"
+            . "/create_room &lt;topic_id&gt; - создать новую комнату\n"
+            . "/join_room &lt;room_id&gt; - присоединиться к комнате"
         );
     }
 }
