@@ -18,34 +18,62 @@ class Database
     public static function getConnection(): PDO
     {
         if (self::$connection === null) {
-            try {
-                $dbType = getenv('DB_TYPE') ?: ($_ENV['DB_TYPE'] ?? 'sqlite');
-
-                if ($dbType === 'mysql') {
-                    // Подключение к MySQL
-                    $host   = getenv('DB_HOST') ?: ($_ENV['DB_HOST'] ?? 'localhost');
-                    $port   = getenv('DB_PORT') ?: ($_ENV['DB_PORT'] ?? '3306');
-                    $dbName = getenv('DB_NAME') ?: ($_ENV['DB_NAME'] ?? 'cardslite');
-                    $user   = getenv('DB_USER') ?: ($_ENV['DB_USER'] ?? 'root');
-                    $pass   = getenv('DB_PASS') ?: ($_ENV['DB_PASS'] ?? '');
-
-                    $dsn = "mysql:host={$host};port={$port};dbname={$dbName};charset=utf8mb4";
-                    self::$connection = new PDO($dsn, $user, $pass);
-                } else {
-                    // Подключение к SQLite (по умолчанию)
-                    $dbFile = getenv('DB_SQLITE_FILE') ?: ($_ENV['DB_SQLITE_FILE'] ?? 'cardslite.db');
-                    self::$connection = new PDO('sqlite:' . $dbFile);
+            self::createConnection();
+        } else {
+            // Проверка соединения для MySQL
+            $dbType = getenv('DB_TYPE') ?: ($_ENV['DB_TYPE'] ?? 'sqlite');
+            if ($dbType === 'mysql') {
+                try {
+                    self::$connection->query('SELECT 1');
+                } catch (PDOException $e) {
+                    // Переподключение при потере соединения
+                    error_log('MySQL connection lost, reconnecting...');
+                    self::$connection = null;
+                    self::createConnection();
                 }
-
-                self::$connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-                self::$connection->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-            } catch (PDOException $e) {
-                // Здесь лучше логировать, но для простоты — die
-                die('Database connection failed: ' . $e->getMessage());
             }
         }
 
         return self::$connection;
+    }
+
+    /**
+     * Создание нового соединения с БД
+     */
+    private static function createConnection(): void
+    {
+        try {
+            $dbType = getenv('DB_TYPE') ?: ($_ENV['DB_TYPE'] ?? 'sqlite');
+
+            if ($dbType === 'mysql') {
+                // Подключение к MySQL
+                $host   = getenv('DB_HOST') ?: ($_ENV['DB_HOST'] ?? 'localhost');
+                $port   = getenv('DB_PORT') ?: ($_ENV['DB_PORT'] ?? '3306');
+                $dbName = getenv('DB_NAME') ?: ($_ENV['DB_NAME'] ?? 'cardslite');
+                $user   = getenv('DB_USER') ?: ($_ENV['DB_USER'] ?? 'root');
+                $pass   = getenv('DB_PASS') ?: ($_ENV['DB_PASS'] ?? '');
+
+                $dsn = "mysql:host={$host};port={$port};dbname={$dbName};charset=utf8mb4";
+                $options = [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    PDO::ATTR_PERSISTENT => false,
+                    PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4",
+                    // Автоматическое переподключение
+                    PDO::ATTR_TIMEOUT => 10,
+                ];
+                self::$connection = new PDO($dsn, $user, $pass, $options);
+            } else {
+                // Подключение к SQLite (по умолчанию)
+                $dbFile = getenv('DB_SQLITE_FILE') ?: ($_ENV['DB_SQLITE_FILE'] ?? 'cardslite.db');
+                self::$connection = new PDO('sqlite:' . $dbFile);
+                self::$connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+                self::$connection->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+            }
+        } catch (PDOException $e) {
+            // Здесь лучше логировать, но для простоты — die
+            die('Database connection failed: ' . $e->getMessage());
+        }
     }
 
     /**

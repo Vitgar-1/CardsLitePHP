@@ -41,6 +41,12 @@ echo "🤖 Бот запущен\n";
 function sendMessage($telegram, $chatId, $text, $replyMarkup = null, $parseMode = 'HTML')
 {
     try {
+        // Проверка на пустое сообщение
+        if (empty(trim($text ?? ''))) {
+            error_log("Попытка отправить пустое сообщение в чат {$chatId}");
+            return null;
+        }
+
         $params = [
             'chat_id' => $chatId,
             'text' => $text,
@@ -206,12 +212,16 @@ function joinRoomProcess($telegram, $chatId, $userId, $roomId): void
 
     // Отправляем первый вопрос обоим игрокам
     $questionText = Database::getQuestionByIndex($topicId, 0);
-    $questionMessage = "➡️ Вопрос 1/{$totalQuestions}:\n\n"
-        . "<b>{$questionText}</b>\n\n"
-        . "💬 Напишите ваш ответ:";
+    if ($questionText) {
+        $questionMessage = "➡️ Вопрос 1/{$totalQuestions}:\n\n"
+            . "<b>{$questionText}</b>\n\n"
+            . "💬 Напишите ваш ответ:";
 
-    sendMessage($telegram, $chatId, $questionMessage);
-    sendMessage($telegram, $player1Id, $questionMessage);
+        sendMessage($telegram, $chatId, $questionMessage);
+        sendMessage($telegram, $player1Id, $questionMessage);
+    } else {
+        error_log("Не найден вопрос для темы {$topicId} с индексом 0");
+    }
 }
 
 // Обработчик команды /stop
@@ -798,7 +808,7 @@ while (true) {
                     continue;
                 }
 
-                $text = $message->text;
+                $text = $message->text ?? '';
 
                 if (str_starts_with($text, '/start')) {
                     handleStart($telegram, $update);
