@@ -31,7 +31,7 @@ down: ## Остановить и удалить контейнеры
 	docker compose -f $(COMPOSE_FILE) down
 
 .PHONY: restart
-restart: down up ## Перезапустить контейнеры
+restart: down build up ## Перезапустить контейнеры
 
 .PHONY: logs
 logs: ## Показать логи бота
