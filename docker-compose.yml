@@ -1,26 +1,59 @@
 services:
+  mysql:
+    image: mysql:8.0
+    container_name: cardslite-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: cardslite
+      MYSQL_USER: cardslite
+      MYSQL_PASSWORD: cardslite_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - cardslite-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   bot:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: cardslite-bot
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      mysql:
+        condition: service_healthy
     environment:
+      - APP_ENV=${APP_ENV:-local}
       - BOT_TOKEN=${BOT_TOKEN}
       - ADMIN_ID=${ADMIN_ID}
-      - DB_TYPE=${DB_TYPE:-sqlite}
-      - DB_HOST=${DB_HOST:-localhost}
-      - DB_PORT=${DB_PORT:-3306}
-      - DB_NAME=${DB_NAME:-cardslite}
-      - DB_USER=${DB_USER:-root}
-      - DB_PASS=${DB_PASS:-}
-      - DB_SQLITE_FILE=${DB_SQLITE_FILE:-/app/data/cardslite.db}
+      - DB_TYPE=mysql
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=cardslite
+      - DB_USER=cardslite
+      - DB_PASS=cardslite_password
     volumes:
-      - ./data:/app/data
+      - ./:/app
+    networks:
+      - cardslite-network
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+    command: sh -c "php migrate migrate && php bot.php"
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  cardslite-network:
+    driver: bridge

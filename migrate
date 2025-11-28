@@ -1,0 +1,177 @@
+#!/usr/bin/env php
+<?php
+
+require_once __DIR__ . '/vendor/autoload.php';
+
+// Load environment variables
+if (file_exists(__DIR__ . '/.env')) {
+    $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+    $dotenv->load();
+}
+
+// Initialize database connection
+$capsule = require __DIR__ . '/bootstrap/database.php';
+
+$command = $argv[1] ?? 'help';
+
+switch ($command) {
+    case 'migrate':
+        echo "Running migrations...\n";
+        runMigrations($capsule);
+        echo "Migrations completed!\n";
+        break;
+
+    case 'rollback':
+        echo "Rolling back last batch...\n";
+        rollbackMigrations($capsule);
+        echo "Rollback completed!\n";
+        break;
+
+    case 'fresh':
+        echo "Dropping all tables and running migrations...\n";
+        freshMigrations($capsule);
+        echo "Fresh migration completed!\n";
+        break;
+
+    case 'status':
+        echo "Migration status:\n";
+        showMigrationStatus($capsule);
+        break;
+
+    default:
+        echo "Usage: php migrate [command]\n";
+        echo "Commands:\n";
+        echo "  migrate   - Run pending migrations\n";
+        echo "  rollback  - Rollback last batch\n";
+        echo "  fresh     - Drop all tables and migrate\n";
+        echo "  status    - Show migration status\n";
+        break;
+}
+
+function ensureMigrationsTable($capsule): void
+{
+    $schema = $capsule->schema();
+
+    if (!$schema->hasTable('migrations')) {
+        $schema->create('migrations', function ($table) {
+            $table->increments('id');
+            $table->string('migration');
+            $table->integer('batch');
+        });
+    }
+}
+
+function runMigrations($capsule): void
+{
+    ensureMigrationsTable($capsule);
+
+    $migrationsPath = __DIR__ . '/database/migrations';
+    $files = glob($migrationsPath . '/*.php');
+    sort($files);
+
+    $ran = $capsule->table('migrations')->pluck('migration')->toArray();
+    $batch = $capsule->table('migrations')->max('batch') + 1;
+
+    foreach ($files as $file) {
+        $migration = basename($file, '.php');
+
+        if (in_array($migration, $ran)) {
+            continue;
+        }
+
+        echo "Migrating: {$migration}\n";
+
+        require_once $file;
+        $className = getMigrationClassName($migration);
+        $instance = new $className;
+        $instance->up($capsule);
+
+        $capsule->table('migrations')->insert([
+            'migration' => $migration,
+            'batch' => $batch
+        ]);
+
+        echo "Migrated: {$migration}\n";
+    }
+}
+
+function rollbackMigrations($capsule): void
+{
+    ensureMigrationsTable($capsule);
+
+    $lastBatch = $capsule->table('migrations')->max('batch');
+    $migrations = $capsule->table('migrations')
+        ->where('batch', $lastBatch)
+        ->orderBy('id', 'desc')
+        ->get();
+
+    $migrationsPath = __DIR__ . '/database/migrations';
+
+    foreach ($migrations as $migration) {
+        $file = $migrationsPath . '/' . $migration->migration . '.php';
+
+        if (!file_exists($file)) {
+            echo "Migration file not found: {$migration->migration}\n";
+            continue;
+        }
+
+        echo "Rolling back: {$migration->migration}\n";
+
+        require_once $file;
+        $className = getMigrationClassName($migration->migration);
+        $instance = new $className;
+        $instance->down($capsule);
+
+        $capsule->table('migrations')
+            ->where('id', $migration->id)
+            ->delete();
+
+        echo "Rolled back: {$migration->migration}\n";
+    }
+}
+
+function freshMigrations($capsule): void
+{
+    $schema = $capsule->schema();
+
+    // Get all tables
+    $tables = $capsule->select("SHOW TABLES");
+
+    // Drop all tables
+    $schema->disableForeignKeyConstraints();
+    foreach ($tables as $table) {
+        $tableName = array_values((array)$table)[0];
+        echo "Dropping table: {$tableName}\n";
+        $schema->dropIfExists($tableName);
+    }
+    $schema->enableForeignKeyConstraints();
+
+    // Run migrations
+    runMigrations($capsule);
+}
+
+function showMigrationStatus($capsule): void
+{
+    ensureMigrationsTable($capsule);
+
+    $migrationsPath = __DIR__ . '/database/migrations';
+    $files = glob($migrationsPath . '/*.php');
+    sort($files);
+
+    $ran = $capsule->table('migrations')->pluck('migration')->toArray();
+
+    foreach ($files as $file) {
+        $migration = basename($file, '.php');
+        $status = in_array($migration, $ran) ? '[✓] Ran' : '[ ] Pending';
+        echo "{$status} {$migration}\n";
+    }
+}
+
+function getMigrationClassName($filename): string
+{
+    // Convert filename to class name
+    // e.g., 2024_01_01_000000_create_topics_table -> CreateTopicsTable
+    $parts = explode('_', $filename);
+    $nameParts = array_slice($parts, 4); // Skip date parts
+    return implode('', array_map('ucfirst', $nameParts));
+}

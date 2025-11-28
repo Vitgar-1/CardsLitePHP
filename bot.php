@@ -14,6 +14,9 @@ if (file_exists(__DIR__ . '/.env')) {
     $dotenv->load();
 }
 
+// Инициализация подключения к БД через Eloquent
+require __DIR__ . '/bootstrap/database.php';
+
 // Проверяем наличие токена
 $botToken = getenv('BOT_TOKEN') ?: ($_ENV['BOT_TOKEN'] ?? null);
 if (!$botToken) {
@@ -28,9 +31,6 @@ if (!$adminId) {
 
 // Инициализация бота
 $telegram = new Api($botToken);
-
-// Инициализация БД
-Database::initDb();
 
 // Хранилище для состояний пользователей (в продакшене использовать БД или Redis)
 $userStates = [];
