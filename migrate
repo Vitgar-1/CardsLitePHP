@@ -79,7 +79,7 @@ function runMigrations($capsule): void
             continue;
         }
 
-        echo "Migrating: {$migration}\n";
+        echo "Migrating: $migration\n";
 
         require_once $file;
         $className = getMigrationClassName($migration);
@@ -91,7 +91,7 @@ function runMigrations($capsule): void
             'batch' => $batch
         ]);
 
-        echo "Migrated: {$migration}\n";
+        echo "Migrated: $migration\n";
     }
 }
 
@@ -111,11 +111,11 @@ function rollbackMigrations($capsule): void
         $file = $migrationsPath . '/' . $migration->migration . '.php';
 
         if (!file_exists($file)) {
-            echo "Migration file not found: {$migration->migration}\n";
+            echo "Migration file not found: $migration->migration\n";
             continue;
         }
 
-        echo "Rolling back: {$migration->migration}\n";
+        echo "Rolling back: $migration->migration\n";
 
         require_once $file;
         $className = getMigrationClassName($migration->migration);
@@ -126,7 +126,7 @@ function rollbackMigrations($capsule): void
             ->where('id', $migration->id)
             ->delete();
 
-        echo "Rolled back: {$migration->migration}\n";
+        echo "Rolled back: $migration->migration\n";
     }
 }
 
@@ -141,7 +141,7 @@ function freshMigrations($capsule): void
     $schema->disableForeignKeyConstraints();
     foreach ($tables as $table) {
         $tableName = array_values((array)$table)[0];
-        echo "Dropping table: {$tableName}\n";
+        echo "Dropping table: $tableName\n";
         $schema->dropIfExists($tableName);
     }
     $schema->enableForeignKeyConstraints();
@@ -163,7 +163,7 @@ function showMigrationStatus($capsule): void
     foreach ($files as $file) {
         $migration = basename($file, '.php');
         $status = in_array($migration, $ran) ? '[✓] Ran' : '[ ] Pending';
-        echo "{$status} {$migration}\n";
+        echo "$status $migration\n";
     }
 }
 
