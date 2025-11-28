@@ -48,6 +48,7 @@ class Bot
 
     /**
      * Обработка обновлений
+     * @throws TelegramSDKException
      */
     private function processUpdates(): void
     {
