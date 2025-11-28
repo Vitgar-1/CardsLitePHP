@@ -557,6 +557,7 @@ function handleVoiceMessage($telegram, $update): void
     $currentQuestionIndex = $room['current_question_index'];
     $voiceFileId = $voice->fileId;
 
+    error_log("Сохранение голосового сообщения: room={$roomId}, user={$userId}, fileId={$voiceFileId}");
     Database::saveChatMessage($roomId, $userId, $currentQuestionIndex, null, $voiceFileId, null, 'voice');
     Database::setPlayerAnswered($roomId, $userId, true);
 
@@ -576,6 +577,7 @@ function handleVoiceMessage($telegram, $update): void
 
     // Чат еще не раскрыт
     [$player1First, $player2First] = Database::checkFirstAnsweredStatus($roomId);
+    error_log("Статус ответов до: player1First={$player1First}, player2First={$player2First}");
 
     if ($userId == $room['player1_id'] && !$player1First) {
         Database::setPlayerFirstAnswered($roomId, $userId, true);
@@ -585,34 +587,48 @@ function handleVoiceMessage($telegram, $update): void
         $player2First = true;
     }
 
+    error_log("Статус ответов после: player1First={$player1First}, player2First={$player2First}");
     sendMessage($telegram, $chatId, "✅ Голосовое сообщение отправлено!", UI::getRemoveKeyboard());
 
     if ($player1First && $player2First) {
+        error_log("Оба игрока ответили! Раскрываем чат.");
         // Оба ответили - раскрываем чат
         $chatMessages = Database::getChatMessages($roomId, $currentQuestionIndex);
+        error_log("Раскрытие чата: найдено " . count($chatMessages) . " сообщений");
 
-        // Отправляем историю и медиафайлы обоим игрокам
+        // Отправляем медиафайлы обоим игрокам
         foreach ($chatMessages as $msg) {
             $msgType = $msg['message_type'] ?? 'text';
+            error_log("Обработка сообщения типа: {$msgType}");
 
-            if ($msgType === 'voice' && $msg['voice_file_id']) {
-                $telegram->sendVoice([
-                    'chat_id' => $chatId,
-                    'voice' => $msg['voice_file_id']
-                ]);
-                $telegram->sendVoice([
-                    'chat_id' => $otherPlayerId,
-                    'voice' => $msg['voice_file_id']
-                ]);
-            } elseif ($msgType === 'video_note' && $msg['video_note_file_id']) {
-                $telegram->sendVideoNote([
-                    'chat_id' => $chatId,
-                    'video_note' => $msg['video_note_file_id']
-                ]);
-                $telegram->sendVideoNote([
-                    'chat_id' => $otherPlayerId,
-                    'video_note' => $msg['video_note_file_id']
-                ]);
+            if ($msgType === 'voice' && !empty($msg['voice_file_id'])) {
+                error_log("Отправка голосового сообщения обоим игрокам: " . $msg['voice_file_id']);
+                try {
+                    $telegram->sendVoice([
+                        'chat_id' => $chatId,
+                        'voice' => $msg['voice_file_id']
+                    ]);
+                    $telegram->sendVoice([
+                        'chat_id' => $otherPlayerId,
+                        'voice' => $msg['voice_file_id']
+                    ]);
+                } catch (Exception $e) {
+                    error_log("Ошибка отправки голосового: " . $e->getMessage());
+                }
+            } elseif ($msgType === 'video_note' && !empty($msg['video_note_file_id'])) {
+                error_log("Отправка видеосообщения обоим игрокам: " . $msg['video_note_file_id']);
+                try {
+                    $telegram->sendVideoNote([
+                        'chat_id' => $chatId,
+                        'video_note' => $msg['video_note_file_id']
+                    ]);
+                    $telegram->sendVideoNote([
+                        'chat_id' => $otherPlayerId,
+                        'video_note' => $msg['video_note_file_id']
+                    ]);
+                } catch (Exception $e) {
+                    error_log("Ошибка отправки видео: " . $e->getMessage());
+                }
             }
         }
 
@@ -655,6 +671,7 @@ function handleVideoMessage($telegram, $update): void
     $currentQuestionIndex = $room['current_question_index'];
     $videoNoteFileId = $videoNote->fileId;
 
+    error_log("Сохранение видеосообщения: room={$roomId}, user={$userId}, fileId={$videoNoteFileId}");
     Database::saveChatMessage($roomId, $userId, $currentQuestionIndex, null, null, $videoNoteFileId, 'video_note');
     Database::setPlayerAnswered($roomId, $userId, true);
 
@@ -674,6 +691,7 @@ function handleVideoMessage($telegram, $update): void
 
     // Чат еще не раскрыт
     [$player1First, $player2First] = Database::checkFirstAnsweredStatus($roomId);
+    error_log("Статус ответов до: player1First={$player1First}, player2First={$player2First}");
 
     if ($userId == $room['player1_id'] && !$player1First) {
         Database::setPlayerFirstAnswered($roomId, $userId, true);
@@ -683,34 +701,48 @@ function handleVideoMessage($telegram, $update): void
         $player2First = true;
     }
 
+    error_log("Статус ответов после: player1First={$player1First}, player2First={$player2First}");
     sendMessage($telegram, $chatId, "✅ Видеосообщение отправлено!", UI::getRemoveKeyboard());
 
     if ($player1First && $player2First) {
+        error_log("Оба игрока ответили! Раскрываем чат.");
         // Оба ответили - раскрываем чат
         $chatMessages = Database::getChatMessages($roomId, $currentQuestionIndex);
+        error_log("Раскрытие чата: найдено " . count($chatMessages) . " сообщений");
 
-        // Отправляем историю и медиафайлы обоим игрокам
+        // Отправляем медиафайлы обоим игрокам
         foreach ($chatMessages as $msg) {
             $msgType = $msg['message_type'] ?? 'text';
+            error_log("Обработка сообщения типа: {$msgType}");
 
-            if ($msgType === 'voice' && $msg['voice_file_id']) {
-                $telegram->sendVoice([
-                    'chat_id' => $chatId,
-                    'voice' => $msg['voice_file_id']
-                ]);
-                $telegram->sendVoice([
-                    'chat_id' => $otherPlayerId,
-                    'voice' => $msg['voice_file_id']
-                ]);
-            } elseif ($msgType === 'video_note' && $msg['video_note_file_id']) {
-                $telegram->sendVideoNote([
-                    'chat_id' => $chatId,
-                    'video_note' => $msg['video_note_file_id']
-                ]);
-                $telegram->sendVideoNote([
-                    'chat_id' => $otherPlayerId,
-                    'video_note' => $msg['video_note_file_id']
-                ]);
+            if ($msgType === 'voice' && !empty($msg['voice_file_id'])) {
+                error_log("Отправка голосового сообщения обоим игрокам: " . $msg['voice_file_id']);
+                try {
+                    $telegram->sendVoice([
+                        'chat_id' => $chatId,
+                        'voice' => $msg['voice_file_id']
+                    ]);
+                    $telegram->sendVoice([
+                        'chat_id' => $otherPlayerId,
+                        'voice' => $msg['voice_file_id']
+                    ]);
+                } catch (Exception $e) {
+                    error_log("Ошибка отправки голосового: " . $e->getMessage());
+                }
+            } elseif ($msgType === 'video_note' && !empty($msg['video_note_file_id'])) {
+                error_log("Отправка видеосообщения обоим игрокам: " . $msg['video_note_file_id']);
+                try {
+                    $telegram->sendVideoNote([
+                        'chat_id' => $chatId,
+                        'video_note' => $msg['video_note_file_id']
+                    ]);
+                    $telegram->sendVideoNote([
+                        'chat_id' => $otherPlayerId,
+                        'video_note' => $msg['video_note_file_id']
+                    ]);
+                } catch (Exception $e) {
+                    error_log("Ошибка отправки видео: " . $e->getMessage());
+                }
             }
         }
 
