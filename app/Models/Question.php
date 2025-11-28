@@ -3,7 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $id
+ * @property int $topic_id
+ * @property string $question_text
+ * @property int $order_num
+ */
 class Question extends Model
 {
     protected $table = 'questions';
@@ -20,7 +27,7 @@ class Question extends Model
     /**
      * Связь с темой
      */
-    public function topic()
+    public function topic(): BelongsTo
     {
         return $this->belongsTo(Topic::class, 'topic_id');
     }

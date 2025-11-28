@@ -513,7 +513,7 @@ function handleNextButton($telegram, $chatId, $userId): void
 
         if ($hasNext) {
             $nextQuestionIndex = $currentQuestionIndex + 1;
-            Database::resetChatForQuestion($roomId, $nextQuestionIndex);
+            Database::resetChatForQuestion($roomId);
 
             $totalQuestions = Database::getTotalQuestionsCount($topicId);
             $nextQuestionText = Database::getQuestionByIndex($topicId, $nextQuestionIndex);

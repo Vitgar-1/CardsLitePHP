@@ -2,8 +2,29 @@
 
 namespace App\Models;
 
+use DateTime;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property string $id
+ * @property int $topic_id
+ * @property string $status
+ * @property int $current_question_index
+ * @property int $player1_id
+ * @property int|null $player2_id
+ * @property bool $player1_ready
+ * @property bool $player2_ready
+ * @property int|null $player1_message_id
+ * @property int|null $player2_message_id
+ * @property bool $player1_answered
+ * @property bool $player2_answered
+ * @property bool $player1_first_answered
+ * @property bool $player2_first_answered
+ * @property bool $chat_revealed
+ * @property DateTime|null $created_at
+ */
 class Room extends Model
 {
     protected $table = 'rooms';
@@ -41,7 +62,7 @@ class Room extends Model
     /**
      * Связь с темой
      */
-    public function topic()
+    public function topic(): BelongsTo
     {
         return $this->belongsTo(Topic::class, 'topic_id');
     }
@@ -49,7 +70,7 @@ class Room extends Model
     /**
      * Связь с ответами
      */
-    public function answers()
+    public function answers(): HasMany
     {
         return $this->hasMany(Answer::class, 'room_id');
     }
@@ -57,7 +78,7 @@ class Room extends Model
     /**
      * Связь с сообщениями чата
      */
-    public function chatMessages()
+    public function chatMessages(): HasMany
     {
         return $this->hasMany(ChatMessage::class, 'room_id');
     }

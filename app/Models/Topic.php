@@ -2,8 +2,15 @@
 
 namespace App\Models;
 
+use DateTime;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $id
+ * @property string $name
+ * @property DateTime|null $created_at
+ */
 class Topic extends Model
 {
     protected $table = 'topics';
@@ -19,7 +26,7 @@ class Topic extends Model
     /**
      * Связь с вопросами
      */
-    public function questions()
+    public function questions(): HasMany
     {
         return $this->hasMany(Question::class, 'topic_id');
     }
@@ -27,7 +34,7 @@ class Topic extends Model
     /**
      * Связь с комнатами
      */
-    public function rooms()
+    public function rooms(): HasMany
     {
         return $this->hasMany(Room::class, 'topic_id');
     }
